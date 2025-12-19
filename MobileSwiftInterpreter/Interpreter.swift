@@ -30,4 +30,60 @@ struct Interpreter {
         
     }
     
+    
+    mutating func add() -> Void {
+        if valueStack.count < 2 {
+            return
+        }
+        
+        guard let rhs = pop()?.intValue else {
+            return
+        }
+        guard let lhs = pop()?.intValue else {
+            return
+        }
+        
+        //add on to the value stack, we need to add an InterpreterValue
+        push(.nativeValue(rhs + lhs))
+    }
+    
+    mutating func subtract() -> Void {
+        //got to make sure there is enough on the stack
+        if valueStack.count < 2 {
+            return
+        }
+        
+        guard let rhs = pop()?.intValue else {
+            return
+        }
+        
+        guard let lhs = pop()?.intValue else {
+            return
+        }
+        
+        //add on to the valeu stack again jsut like add
+        push(.nativeValue(lhs - rhs))
+    }
+    
+    //teaching the interpreter how to read and execute instructions, unmaned external parameter
+    mutating func run(_ program: [OpCode]) -> Void {
+        //loop over ValueStack
+        for instruction in program {
+            switch instruction {
+            case .pushInt(let value):
+                //push value
+                push(.nativeValue(value))
+                
+            case .add:
+                add()
+                
+            case .subtract:
+                subtract()
+                
+            }
+        }
+    }
+    
+    
+    
 }
