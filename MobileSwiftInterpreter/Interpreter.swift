@@ -7,6 +7,8 @@
 
 struct Interpreter {
     var valueStack: [InterpreterValue] = []
+    //var to track which byte I am currently executing
+    var pc: Int = 0
     
     //must be able to push and pop to the stack
     
@@ -65,8 +67,9 @@ struct Interpreter {
         push(.nativeValue(lhs - rhs))
     }
     
+    //old method of running ------- IGNORE
     //teaching the interpreter how to read and execute instructions, unmaned external parameter
-    mutating func run(_ program: [OpCode]) -> Void {
+    /* mutating func run(_ program: [OpCode]) -> Void {
         //loop over ValueStack
         for instruction in program {
             switch instruction {
@@ -82,6 +85,44 @@ struct Interpreter {
                 
             }
         }
+    } */
+    
+    
+    //adding new fuction to go over bytecode and not OpCode
+    mutating func runBytecode(_ bytecode: [Bytecode]) {
+        pc = 0
+        
+        while pc < bytecode.count {
+            let insturction = bytecode[pc]
+            pc += 1
+            //optional binding
+            if let op = Operation(rawValue: insturction.value) {
+                switch op  {
+                //if we are pushing an int
+                case .pushInt:
+                    let value = bytecode[pc].value
+                    pc += 1
+                    push(.nativeValue(value))
+                    
+                //if we are adding a value
+                case .add:
+                    add()
+                
+                    //if we are subtracting a value
+                case .subtract:
+                    subtract()
+                }
+                
+            }
+            
+            
+        }
+    }
+    
+    //clean new convenience method
+    mutating func run(_ program: [OpCode]) {
+        let bytecode = compile(program)
+        runBytecode(bytecode)
     }
     
     
