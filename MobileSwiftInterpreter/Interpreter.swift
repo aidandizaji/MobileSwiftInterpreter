@@ -111,6 +111,25 @@ struct Interpreter {
                     //if we are subtracting a value
                 case .subtract:
                     subtract()
+                    
+                case .jump:
+                    let offset = bytecode[pc].value
+                    pc += 1
+                    pc += offset
+                    
+                case .jumpIfFalse:
+                    let offset = bytecode[pc].value
+                    pc += 1
+                    let condition = pop()?.boolValue ?? false
+                    if condition == false {
+                        pc += offset
+                    }
+                    
+                case .lessThan:
+                    let rhs = pop()
+
+                    
+                    
                 }
                 
             }
