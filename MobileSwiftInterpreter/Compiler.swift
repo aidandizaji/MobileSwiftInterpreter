@@ -8,19 +8,29 @@
 func compile(_ program: [OpCode]) -> [Bytecode] {
     var bytecode: [Bytecode] = []
 
-    
-    //cant use a loop here because we can not tell the difference between opcode vs operand. For - Each Functionalilty breaks down.
     for instruction in program {
         switch instruction {
+
         case .pushInt(let value):
-            //need to add the correct value for .pushint
             bytecode.append(Bytecode(value: Operation.pushInt.rawValue))
             bytecode.append(Bytecode(value: value))
-            
+
+        case .pushBool(let value):
+            bytecode.append(Bytecode(value: Operation.pushBool.rawValue))
+            bytecode.append(Bytecode(value: value ? 1 : 0))
+
         case .add:
-            break
+            bytecode.append(Bytecode(value: Operation.add.rawValue))
+
         case .subtract:
-            break
+            bytecode.append(Bytecode(value: Operation.subtract.rawValue))
+            
+        case .pushString(let value):
+            let index = stringPool.count
+            stringPool.append(value)
+            bytecode.append(Bytecode(value: Operation.pushString.rawValue))
+            bytecode.append(Bytecode(value: index))
+
         }
     }
 

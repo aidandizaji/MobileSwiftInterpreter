@@ -9,6 +9,8 @@ struct Interpreter {
     var valueStack: [InterpreterValue] = []
     //var to track which byte I am currently executing
     var pc: Int = 0
+    var stringPool: [String] = []
+
     
     //must be able to push and pop to the stack
     
@@ -126,9 +128,25 @@ struct Interpreter {
                     }
                     
                 case .lessThan:
-                    let rhs = pop()
-
+                    let rhs = pop()?.intValue ?? 0
+                    let lhs = pop()?.intValue ?? 0
+                    push(.nativeValue(lhs < rhs))
                     
+                case .equal:
+                    let rhs = pop()?.intValue ?? 0
+                    let lhs = pop()?.intValue ?? 0
+                    push(.nativeValue(lhs == rhs))
+                    
+                case .pushBool:
+                    let raw = bytecode[pc].value
+                    pc += 1
+                    push(.nativeValue(raw != 0))
+                    
+                case .pushString:
+                    let index = bytecode[pc].value
+                    pc += 1
+                    push(.nativeValue(stringPool[index]))
+
                     
                 }
                 

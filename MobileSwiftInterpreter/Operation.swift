@@ -12,4 +12,10 @@ enum Operation: Int {
     case jump = 3
     case jumpIfFalse = 4
     case lessThan = 5
+    case equal = 6
+    case pushBool = 7
+    case pushString = 8
+
+
+
 }

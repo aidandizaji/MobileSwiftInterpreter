@@ -8,4 +8,8 @@ enum OpCode {
     case pushInt(Int)
     case add
     case subtract
+    case pushBool(Bool)
+    case pushString(String)
+
+
 }
