@@ -25,4 +25,9 @@ enum Operation: UInt8 {
     case constructType
     case returnValue
     case pushDouble
+    case pushNil
+    case coalesce
+    case loadState
+    case pushBinding
+    case pushAction
 }

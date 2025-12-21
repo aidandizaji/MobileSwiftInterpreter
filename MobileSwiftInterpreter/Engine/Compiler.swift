@@ -5,11 +5,18 @@
 //  Created by Aidan Dizaji on 2025-12-19.
 //
 
+#if canImport(SwiftSyntax)
+import SwiftSyntax
+#endif
+
 struct CompiledProgram {
     let bytecode: Bytecode
     let stringPool: [String]
     let symbolPool: [String]
     let typeTable: [InterpreterType]
+    let stateIdentifiers: Set<String>
+    let stateDefaults: [String: InterpreterValue]
+    let actionPool: [ActionDescriptor]
 }
 
 struct Compiler {
@@ -18,6 +25,11 @@ struct Compiler {
     var symbolPool: [String]
     var typeTable: [InterpreterType]
     var localTable: [String: Int]
+    var stateIdentifiers: Set<String>
+    var stateDefaults: [String: InterpreterValue]
+    var actionPool: [ActionDescriptor]
+    var literalBindings: [String: InterpreterValue]
+    var computedProperties: [String: ExprSyntax]
 
     init() {
         self.bytecode = Bytecode()
@@ -25,6 +37,11 @@ struct Compiler {
         self.symbolPool = []
         self.typeTable = []
         self.localTable = [:]
+        self.stateIdentifiers = []
+        self.stateDefaults = [:]
+        self.actionPool = []
+        self.literalBindings = [:]
+        self.computedProperties = [:]
     }
 
     mutating func emit(_ op: Operation) {
@@ -78,6 +95,23 @@ struct Compiler {
         bytecode.appendDouble(value)
     }
 
+    mutating func emitPushNil() {
+        emit(.pushNil)
+    }
+
+    mutating func registerState(name: String, defaultValue: InterpreterValue?) {
+        stateIdentifiers.insert(name)
+        if let defaultValue = defaultValue {
+            stateDefaults[name] = defaultValue
+        }
+    }
+
+    mutating func emitPushAction(_ descriptor: ActionDescriptor) {
+        actionPool.append(descriptor)
+        emit(.pushAction)
+        emitInt(actionPool.count - 1)
+    }
+
     mutating func allocateLocal(_ name: String) -> Int {
         if let existing = localTable[name] {
             return existing
@@ -110,7 +144,10 @@ struct Compiler {
             bytecode: bytecode,
             stringPool: stringPool,
             symbolPool: symbolPool,
-            typeTable: typeTable
+            typeTable: typeTable,
+            stateIdentifiers: stateIdentifiers,
+            stateDefaults: stateDefaults,
+            actionPool: actionPool
         )
     }
 }

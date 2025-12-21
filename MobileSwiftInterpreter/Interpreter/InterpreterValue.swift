@@ -89,8 +89,34 @@ extension InterpreterValue {
             return nil
         }
     }
+
+    var bindingValue: AnyBinding? {
+        switch self {
+        case .nativeValue(let value):
+            return value as? AnyBinding
+        case .customInstance:
+            return nil
+        }
+    }
+
+    var actionValue: ActionHandler? {
+        switch self {
+        case .nativeValue(let value):
+            return value as? ActionHandler
+        case .customInstance:
+            return nil
+        }
+    }
     #else
     var viewValue: Any? {
+        return nil
+    }
+
+    var bindingValue: Any? {
+        return nil
+    }
+
+    var actionValue: Any? {
         return nil
     }
     #endif

@@ -1,6 +1,9 @@
 #if canImport(SwiftUI)
 import SwiftUI
 #endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 //
 //  Interpreter.swift
@@ -42,6 +45,8 @@ struct Interpreter {
     var allowedTypeNames: Set<String>
     var allowedMethodNames: [String: Set<String>]
     var allowedFunctionNames: Set<String>
+    var stateStore: StateStore?
+    var actionPool: [ActionDescriptor]
 
     init() {
         self.pc = 0
@@ -56,6 +61,8 @@ struct Interpreter {
         self.allowedTypeNames = []
         self.allowedMethodNames = [:]
         self.allowedFunctionNames = []
+        self.stateStore = nil
+        self.actionPool = []
     }
 
     mutating func run(_ program: CompiledProgram) throws {
@@ -67,6 +74,7 @@ struct Interpreter {
         self.symbolPool = program.symbolPool
         self.typeTable = program.typeTable
         self.bytecode = program.bytecode
+        self.actionPool = program.actionPool
 
         while pc < bytecode.count {
             let op = nextOp()
@@ -152,6 +160,8 @@ struct Interpreter {
         case .pushDouble:
             let value = nextDouble()
             push(.nativeValue(value))
+        case .pushNil:
+            push(.nativeValue(()))
         case .pushString:
             let index = nextInt()
             guard stringPool.indices.contains(index) else {
@@ -159,11 +169,49 @@ struct Interpreter {
             }
             let value = stringPool[index]
             push(.nativeValue(value))
+        case .loadState:
+            let symbol = nextSymbol()
+            let name = try symbolName(symbol)
+            if let stateStore = stateStore {
+                push(stateStore.value(for: name))
+            } else {
+                push(.nativeValue(()))
+            }
+        case .pushBinding:
+            let symbol = nextSymbol()
+            let name = try symbolName(symbol)
+            if let stateStore = stateStore {
+                let binding = AnyBinding(
+                    get: { stateStore.value(for: name) },
+                    set: { stateStore.setValue($0, for: name) }
+                )
+                push(.nativeValue(binding))
+            } else {
+                push(.nativeValue(()))
+            }
+        case .pushAction:
+            let index = nextInt()
+            guard actionPool.indices.contains(index) else {
+                throw InterpreterRuntimeError.invalidSymbol(index)
+            }
+            let descriptor = actionPool[index]
+            if let stateStore = stateStore {
+                let handler = ActionHandler {
+                    stateStore.setValue(descriptor.value, for: descriptor.stateName)
+                }
+                push(.nativeValue(handler))
+            } else {
+                push(.nativeValue(()))
+            }
         case .add:
             guard let rhsValue = pop(), let lhsValue = pop() else {
                 throw InterpreterRuntimeError.stackUnderflow
             }
-            if let rhsInt = rhsValue.intValue, let lhsInt = lhsValue.intValue {
+            if let lhsString = lhsValue.stringValue ?? stringify(lhsValue),
+               let rhsString = rhsValue.stringValue ?? stringify(rhsValue),
+               lhsValue.stringValue != nil || rhsValue.stringValue != nil {
+                push(.nativeValue(lhsString + rhsString))
+            } else if let rhsInt = rhsValue.intValue, let lhsInt = lhsValue.intValue {
                 push(.nativeValue(lhsInt + rhsInt))
             } else if let rhsDouble = rhsValue.doubleValue, let lhsDouble = lhsValue.doubleValue {
                 push(.nativeValue(lhsDouble + rhsDouble))
@@ -312,6 +360,15 @@ struct Interpreter {
             let arguments = try popValues(count: argCount)
             let value = try evaluateInitializer(typeName: typeName, arguments: arguments)
             push(value)
+        case .coalesce:
+            guard let rhs = pop(), let lhs = pop() else {
+                throw InterpreterRuntimeError.stackUnderflow
+            }
+            if case .nativeValue(let value) = lhs, value is Void {
+                push(rhs)
+            } else {
+                push(lhs)
+            }
         case .returnValue:
             let returnValue = pop() ?? .nativeValue(())
             guard let frame = callStack.popLast() else {
@@ -330,6 +387,81 @@ struct Interpreter {
 }
 
 extension Interpreter {
+    private func stringify(_ value: InterpreterValue) -> String? {
+        if case .nativeValue(let raw) = value, raw is Void {
+            return ""
+        }
+        if let stringValue = value.stringValue {
+            return stringValue
+        }
+        if let intValue = value.intValue {
+            return String(intValue)
+        }
+        if let doubleValue = value.doubleValue {
+            return String(doubleValue)
+        }
+        if let boolValue = value.boolValue {
+            return String(boolValue)
+        }
+        return nil
+    }
+
+    private func stringBinding(from binding: AnyBinding) -> Binding<String> {
+        Binding(
+            get: { binding.get().stringValue ?? "" },
+            set: { binding.set(.nativeValue($0)) }
+        )
+    }
+
+    private func boolBinding(from binding: AnyBinding) -> Binding<Bool> {
+        Binding(
+            get: { binding.get().boolValue ?? false },
+            set: { binding.set(.nativeValue($0)) }
+        )
+    }
+
+    private func doubleBinding(from binding: AnyBinding) -> Binding<Double> {
+        Binding(
+            get: { binding.get().doubleValue ?? 0 },
+            set: { binding.set(.nativeValue($0)) }
+        )
+    }
+
+    private func intBinding(from binding: AnyBinding) -> Binding<Int> {
+        Binding(
+            get: { binding.get().intValue ?? 0 },
+            set: { binding.set(.nativeValue($0)) }
+        )
+    }
+
+    private func color(from value: InterpreterValue) -> Color? {
+        if let stringValue = value.stringValue {
+            return color(fromName: stringValue)
+        }
+        return nil
+    }
+
+    private func color(fromName name: String) -> Color? {
+        switch name {
+        case "systemGray6":
+            return Color(UIColor.systemGray6)
+        case "systemGray5":
+            return Color(UIColor.systemGray5)
+        case "systemGray4":
+            return Color(UIColor.systemGray4)
+        case "blue":
+            return Color.blue
+        case "white":
+            return Color.white
+        case "primary":
+            return Color.primary
+        case "secondary":
+            return Color.secondary
+        default:
+            return nil
+        }
+    }
+
     func evaluateMethodCall(
         base: InterpreterValue,
         symbol: Int,
@@ -364,11 +496,60 @@ extension Interpreter {
             #if canImport(SwiftUI)
             if let view = value as? AnyView {
                 switch name {
+                case "background":
+                    if let colorValue = arguments.first {
+                        if let color = color(from: colorValue) {
+                            return .nativeValue(AnyView(view.background(color)))
+                        }
+                        if case .nativeValue(let raw) = colorValue, let color = raw as? Color {
+                            return .nativeValue(AnyView(view.background(color)))
+                        }
+                    }
+                    if let backgroundView = arguments.first?.viewValue {
+                        return .nativeValue(AnyView(view.background(backgroundView)))
+                    }
+                    return .nativeValue(view)
+                case "cornerRadius":
+                    if let radius = arguments.first?.doubleValue {
+                        return .nativeValue(AnyView(view.cornerRadius(radius)))
+                    }
+                    return .nativeValue(view)
                 case "padding":
                     if let amount = arguments.first?.intValue {
                         return .nativeValue(AnyView(view.padding(CGFloat(amount))))
                     }
                     return .nativeValue(AnyView(view.padding()))
+                case "foregroundColor":
+                    if let colorValue = arguments.first {
+                        if let color = color(from: colorValue) {
+                            return .nativeValue(AnyView(view.foregroundColor(color)))
+                        }
+                        if case .nativeValue(let raw) = colorValue, let color = raw as? Color {
+                            return .nativeValue(AnyView(view.foregroundColor(color)))
+                        }
+                    }
+                    return .nativeValue(view)
+                case "frame":
+                    if let widthValue = arguments.first {
+                        if widthValue.stringValue == "infinity" {
+                            return .nativeValue(AnyView(view.frame(maxWidth: .infinity)))
+                        }
+                        if let width = widthValue.doubleValue {
+                            return .nativeValue(AnyView(view.frame(width: width)))
+                        }
+                    }
+                    return .nativeValue(view)
+                case "keyboardType":
+                    return .nativeValue(view)
+                case "onTapGesture":
+                    return .nativeValue(AnyView(view.onTapGesture {}))
+                case "navigationTitle":
+                    let title = arguments.first?.stringValue ?? ""
+                    return .nativeValue(AnyView(view.navigationTitle(title)))
+                case "font":
+                    return .nativeValue(view)
+                case "fontWeight":
+                    return .nativeValue(view)
                 default:
                     throw InterpreterRuntimeError.bridgeNotAllowed(name)
                 }
@@ -391,10 +572,27 @@ extension Interpreter {
             throw InterpreterRuntimeError.bridgeNotAllowed(typeName)
         }
         #if canImport(SwiftUI)
+        if typeName == "Double" {
+            if let value = arguments.first?.doubleValue {
+                return .nativeValue(value)
+            }
+            if let stringValue = arguments.first?.stringValue,
+               let parsed = Double(stringValue) {
+                return .nativeValue(parsed)
+            }
+            return .nativeValue(())
+        }
         if typeName == "ClosedRange" {
             let lower = arguments.first?.doubleValue ?? 0
             let upper = arguments.dropFirst().first?.doubleValue ?? lower
             return .nativeValue(lower...upper)
+        }
+        if typeName == "Color" {
+            if let stringValue = arguments.first?.stringValue,
+               let color = color(fromName: stringValue) {
+                return .nativeValue(color)
+            }
+            return .nativeValue(Color.clear)
         }
         if typeName == "Text" {
             let content = arguments.first?.stringValue ?? ""
@@ -425,6 +623,28 @@ extension Interpreter {
             })
             return .nativeValue(stack)
         }
+        if typeName == "List" {
+            let views = arguments.compactMap { $0.viewValue }
+            let list = AnyView(List {
+                ForEach(Array(views.enumerated()), id: \.offset) { element in
+                    element.element
+                }
+            })
+            return .nativeValue(list)
+        }
+        if typeName == "NavigationStack" {
+            let views = arguments.compactMap { $0.viewValue }
+            let content = stackedView(from: views) ?? AnyView(EmptyView())
+            return .nativeValue(AnyView(NavigationStack { content }))
+        }
+        if typeName == "NavigationLink" {
+            let views = arguments.compactMap { $0.viewValue }
+            let destination = views.first ?? AnyView(EmptyView())
+            let labelViews = Array(views.dropFirst())
+            let label = stackedView(from: labelViews) ?? AnyView(Text("Details"))
+            let link = AnyView(NavigationLink(destination: destination) { label })
+            return .nativeValue(link)
+        }
         if typeName == "Rectangle" {
             return .nativeValue(AnyView(Rectangle()))
         }
@@ -433,7 +653,13 @@ extension Interpreter {
         }
         if typeName == "Button" {
             let views = arguments.compactMap { $0.viewValue }
+            let action = arguments.first(where: { $0.actionValue != nil })?.actionValue
             if let title = arguments.first?.stringValue {
+                if let action = action {
+                    return .nativeValue(AnyView(Button(title) {
+                        action.perform()
+                    }))
+                }
                 return .nativeValue(AnyView(Button(title) {}))
             }
             if !views.isEmpty {
@@ -447,7 +673,17 @@ extension Interpreter {
                         }
                     })
                 }
+                if let action = action {
+                    return .nativeValue(AnyView(Button(action: {
+                        action.perform()
+                    }) { label }))
+                }
                 return .nativeValue(AnyView(Button(action: {}) { label }))
+            }
+            if let action = action {
+                return .nativeValue(AnyView(Button("Button") {
+                    action.perform()
+                }))
             }
             return .nativeValue(AnyView(Button("Button") {}))
         }
@@ -468,21 +704,43 @@ extension Interpreter {
                 maxValue = minValue + 1
             }
             let clampedValue = Swift.min(Swift.max(value, minValue), maxValue)
-            let slider = InteractiveSlider(initialValue: clampedValue, range: minValue...maxValue)
-            return .nativeValue(AnyView(slider))
+            if let binding = arguments.first(where: { $0.bindingValue != nil })?.bindingValue {
+                let slider = Slider(
+                    value: doubleBinding(from: binding),
+                    in: minValue...maxValue
+                )
+                return .nativeValue(AnyView(slider))
+            } else {
+                let slider = InteractiveSlider(initialValue: clampedValue, range: minValue...maxValue)
+                return .nativeValue(AnyView(slider))
+            }
         }
         if typeName == "Toggle" {
             let views = arguments.compactMap { $0.viewValue }
             let labelView = stackedView(from: views)
             let isOn = arguments.first(where: { $0.boolValue != nil })?.boolValue ?? false
             if let labelView = labelView {
+                if let binding = arguments.first(where: { $0.bindingValue != nil })?.bindingValue {
+                    let toggle = Toggle(isOn: boolBinding(from: binding)) {
+                        labelView
+                    }
+                    return .nativeValue(AnyView(toggle))
+                }
                 return .nativeValue(AnyView(InteractiveToggle(labelView: labelView, initialValue: isOn)))
             }
             let label = arguments.first?.stringValue ?? "Toggle"
+            if let binding = arguments.first(where: { $0.bindingValue != nil })?.bindingValue {
+                return .nativeValue(AnyView(Toggle(label, isOn: boolBinding(from: binding))))
+            }
             return .nativeValue(AnyView(InteractiveToggle(label: label, initialValue: isOn)))
         }
         if typeName == "TextField" {
             let placeholder = arguments.first?.stringValue ?? "Text"
+            if let binding = arguments.first(where: { $0.bindingValue != nil })?.bindingValue {
+                let field = TextField(placeholder, text: stringBinding(from: binding))
+                    .textFieldStyle(.roundedBorder)
+                return .nativeValue(AnyView(field))
+            }
             let initialValue = arguments.dropFirst().first?.stringValue ?? ""
             let field = InteractiveTextField(placeholder: placeholder, initialValue: initialValue)
             return .nativeValue(AnyView(field))
@@ -506,6 +764,12 @@ extension Interpreter {
                 maxValue = minValue + 1
             }
             if let labelView = labelView {
+                if let binding = arguments.first(where: { $0.bindingValue != nil })?.bindingValue {
+                    let stepper = Stepper(value: intBinding(from: binding), in: minValue...maxValue) {
+                        labelView
+                    }
+                    return .nativeValue(AnyView(stepper))
+                }
                 let stepper = InteractiveStepper(
                     labelView: labelView,
                     initialValue: value,
@@ -514,8 +778,15 @@ extension Interpreter {
                 return .nativeValue(AnyView(stepper))
             }
             let label = arguments.first?.stringValue ?? "Stepper"
+            if let binding = arguments.first(where: { $0.bindingValue != nil })?.bindingValue {
+                let stepper = Stepper(label, value: intBinding(from: binding), in: minValue...maxValue)
+                return .nativeValue(AnyView(stepper))
+            }
             let stepper = InteractiveStepper(label: label, initialValue: value, range: minValue...maxValue)
             return .nativeValue(AnyView(stepper))
+        }
+        if typeName == "Divider" {
+            return .nativeValue(AnyView(Divider()))
         }
         #endif
         let instance = buildCustomInstance(typeName: typeName, arguments: arguments)

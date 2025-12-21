@@ -22,7 +22,7 @@ struct RunController {
         self.timeoutNanoseconds = timeoutMilliseconds * 1_000_000
     }
 
-    func run(source: String, logBuffer: LogBuffer) async -> RunResult {
+    func run(source: String, logBuffer: LogBuffer, stateStore: StateStore?) async -> RunResult {
         do {
             if Task.isCancelled {
                 throw RunControllerError.cancelled
@@ -37,7 +37,7 @@ struct RunController {
 
             let value = try await withTimeout {
                 // Engine hook: interpret bytecode into a value.
-                try engine.run(program: program, logBuffer: logBuffer)
+                try engine.run(program: program, logBuffer: logBuffer, stateStore: stateStore)
             }
             if Task.isCancelled {
                 throw RunControllerError.cancelled
@@ -45,7 +45,7 @@ struct RunController {
 
             // Engine hook: convert InterpreterValue into AnyView.
             let view = try engine.renderRootView(result: value)
-            return .success(view: view)
+            return .success(view: view, program: program)
         } catch is CancellationError {
             return .cancelled
         } catch let error as RunControllerError {

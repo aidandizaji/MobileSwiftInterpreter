@@ -28,6 +28,7 @@ final class AppViewModel: ObservableObject {
     private let runController: RunController
     private let logBuffer: LogBuffer
     private let debouncer: Debouncer
+    private let stateStore: StateStore
     private let lastSourceKey = "lastSource"
     private let autoRunKey = "autoRunEnabled"
 
@@ -37,11 +38,13 @@ final class AppViewModel: ObservableObject {
     init(
         runController: RunController = RunController(),
         logBuffer: LogBuffer = LogBuffer(),
-        debouncer: Debouncer = Debouncer(delay: 0.4)
+        debouncer: Debouncer = Debouncer(delay: 0.4),
+        stateStore: StateStore = StateStore()
     ) {
         self.runController = runController
         self.logBuffer = logBuffer
         self.debouncer = debouncer
+        self.stateStore = stateStore
         let savedSource = UserDefaults.standard.string(forKey: lastSourceKey)
         self.source = savedSource ?? TemplateLibrary.templates.first?.code ?? ""
         self.autoRunEnabled = UserDefaults.standard.bool(forKey: autoRunKey)
@@ -53,6 +56,7 @@ final class AppViewModel: ObservableObject {
 
     func handleSourceChange() {
         UserDefaults.standard.set(source, forKey: lastSourceKey)
+        stateStore.reset()
         if autoRunEnabled {
             debouncer.schedule { [weak self] in
                 Task { @MainActor in
@@ -72,6 +76,7 @@ final class AppViewModel: ObservableObject {
 
     func applyTemplate(_ template: Template) {
         source = template.code
+        stateStore.reset()
         handleSourceChange()
     }
 
@@ -83,6 +88,7 @@ final class AppViewModel: ObservableObject {
     func clearSource() {
         source = ""
         UserDefaults.standard.set(source, forKey: lastSourceKey)
+        stateStore.reset()
         handleSourceChange()
     }
 
@@ -92,18 +98,24 @@ final class AppViewModel: ObservableObject {
         status = .compiling
         diagnostics = []
         logBuffer.clear()
-        currentTask = Task { [runController, logBuffer] in
+        currentTask = Task { [runController, logBuffer, stateStore] in
             await MainActor.run {
                 self.status = .running
             }
-            let result = await runController.run(source: snapshot, logBuffer: logBuffer)
+            let result = await runController.run(source: snapshot, logBuffer: logBuffer, stateStore: stateStore)
             let logSnapshot = logBuffer.snapshot()
             await MainActor.run {
                 self.logs = logSnapshot
                 switch result {
-                case .success(let view):
+                case .success(_, let program):
                     self.runID += 1
-                    self.currentView = view
+                    let rendered = InterpretedView(
+                        program: program,
+                        engine: runController.engine,
+                        stateStore: stateStore,
+                        logBuffer: logBuffer
+                    )
+                    self.currentView = AnyView(rendered)
                     self.status = .ok
                 case .failure(let diagnostics):
                     self.diagnostics = diagnostics

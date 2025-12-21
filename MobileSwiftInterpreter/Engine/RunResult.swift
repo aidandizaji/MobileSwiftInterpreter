@@ -8,7 +8,7 @@
 import SwiftUI
 
 enum RunResult {
-    case success(view: AnyView)
+    case success(view: AnyView, program: CompiledProgram)
     case failure(diagnostics: [Diagnostic])
     case cancelled
 }
