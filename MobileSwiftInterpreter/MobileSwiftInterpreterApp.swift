@@ -11,7 +11,7 @@ import SwiftUI
 struct MobileSwiftInterpreterApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AppRoot()
         }
     }
 }

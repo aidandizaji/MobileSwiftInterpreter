@@ -5,17 +5,23 @@
 //  Created by Aidan Dizaji on 2025-12-19.
 //
 
-enum Operation: Int {
+enum Operation: UInt8 {
     case pushInt = 0
-    case add = 1
-    case subtract = 2
-    case jump = 3
-    case jumpIfFalse = 4
-    case lessThan = 5
-    case equal = 6
-    case pushBool = 7
-    case pushString = 8
-
-
-
+    case pushBool
+    case pushString
+    case add
+    case subtract
+    case multiply
+    case divide
+    case lessThan
+    case equal
+    case jump
+    case jumpIfFalse
+    case loadLocal
+    case storeLocal
+    case callMethod
+    case callFunction
+    case getProperty
+    case constructType
+    case returnValue
 }

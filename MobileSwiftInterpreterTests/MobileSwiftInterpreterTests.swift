@@ -7,30 +7,97 @@
 
 import XCTest
 @testable import MobileSwiftInterpreter
+#if canImport(SwiftUI)
+import SwiftUI
+#endif
 
 final class MobileSwiftInterpreterTests: XCTestCase {
-
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
+    func testBytecodeExecution() {
+        var bytecode = Bytecode()
+        bytecode.appendOp(.pushInt)
+        bytecode.appendInt(2)
+        bytecode.appendOp(.pushInt)
+        bytecode.appendInt(3)
+        bytecode.appendOp(.add)
+        let program = CompiledProgram(
+            bytecode: bytecode,
+            stringPool: [],
+            symbolPool: [],
+            typeTable: []
+        )
+        var interpreter = Interpreter()
+        XCTAssertNoThrow(try interpreter.run(program))
+        XCTAssertEqual(interpreter.valueStack.last?.intValue, 5)
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
+    func testJumpOffsets() {
+        var compiler = Compiler()
+        compiler.emitPushBool(false)
+        let jumpToElse = compiler.emitJump(.jumpIfFalse)
+        compiler.emitPushInt(1)
+        let jumpToEnd = compiler.emitJump(.jump)
+        let elseTarget = compiler.bytecode.count
+        compiler.patchJump(at: jumpToElse, to: elseTarget)
+        compiler.emitPushInt(2)
+        let endTarget = compiler.bytecode.count
+        compiler.patchJump(at: jumpToEnd, to: endTarget)
+        let program = compiler.finish()
+        var interpreter = Interpreter()
+        XCTAssertNoThrow(try interpreter.run(program))
+        XCTAssertEqual(interpreter.valueStack.last?.intValue, 2)
     }
 
-    func testExample() throws {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // Any test you write for XCTest can be annotated as throws and async.
-        // Mark your test throws to produce an unexpected failure when your test encounters an uncaught error.
-        // Mark your test async to allow awaiting for asynchronous code to complete. Check the results with assertions afterwards.
+    func testExpressionEvaluation() {
+        var bytecode = Bytecode()
+        bytecode.appendOp(.pushInt)
+        bytecode.appendInt(4)
+        bytecode.appendOp(.pushInt)
+        bytecode.appendInt(2)
+        bytecode.appendOp(.multiply)
+        bytecode.appendOp(.pushInt)
+        bytecode.appendInt(8)
+        bytecode.appendOp(.equal)
+        let program = CompiledProgram(
+            bytecode: bytecode,
+            stringPool: [],
+            symbolPool: [],
+            typeTable: []
+        )
+        var interpreter = Interpreter()
+        XCTAssertNoThrow(try interpreter.run(program))
+        XCTAssertEqual(interpreter.valueStack.last?.boolValue, true)
     }
 
-    func testPerformanceExample() throws {
-        // This is an example of a performance test case.
-        self.measure {
-            // Put the code you want to measure the time of here.
-        }
+    func testMethodCallBridging() {
+        var compiler = Compiler()
+        compiler.emitPushString("hello")
+        let symbol = compiler.emitSymbol("uppercased")
+        compiler.emit(.callMethod)
+        compiler.emitInt(symbol)
+        compiler.emitInt(0)
+        let program = compiler.finish()
+        var interpreter = Interpreter()
+        interpreter.allowedMethodNames = ["String": ["uppercased"]]
+        XCTAssertNoThrow(try interpreter.run(program))
+        XCTAssertEqual(interpreter.valueStack.last?.stringValue, "HELLO")
+    }
+
+    func testSwiftUIRendering() {
+        #if canImport(SwiftUI)
+        var compiler = Compiler()
+        compiler.emitPushString("Works")
+        let symbol = compiler.emitSymbol("Text")
+        compiler.emit(.constructType)
+        compiler.emitInt(symbol)
+        compiler.emitInt(1)
+        let program = compiler.finish()
+        var interpreter = Interpreter()
+        interpreter.allowedTypeNames = ["Text"]
+        XCTAssertNoThrow(try interpreter.run(program))
+        XCTAssertNotNil(interpreter.valueStack.last?.viewValue)
+        #else
+        XCTAssertTrue(true)
+        #endif
     }
 
 }

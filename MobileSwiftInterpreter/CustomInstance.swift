@@ -6,5 +6,6 @@
 //
 
 struct CustomInstance {
-    var values: [String: InterpreterValue]
+    let typeName: String
+    var fields: [String: InterpreterValue]
 }
