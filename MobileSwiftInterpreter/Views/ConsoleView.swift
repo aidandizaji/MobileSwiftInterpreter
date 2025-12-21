@@ -13,13 +13,7 @@ struct ConsoleView: View {
     let onClear: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Console")
-                    .font(.headline)
-                Spacer()
-                Button("Clear", action: onClear)
-            }
+        GroupBox {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 4) {
@@ -39,8 +33,14 @@ struct ConsoleView: View {
                     }
                 }
             }
+        } label: {
+            HStack(spacing: 8) {
+                Label("Console", systemImage: "terminal")
+                    .font(.subheadline)
+                Spacer()
+                Button("Clear", action: onClear)
+                    .font(.subheadline)
+            }
         }
-        .padding(8)
-        .background(Color(UIColor.secondarySystemBackground))
     }
 }

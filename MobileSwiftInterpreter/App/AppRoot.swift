@@ -20,6 +20,7 @@ struct AppRoot: View {
     @StateObject private var viewModel = AppViewModel()
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedTab: RootTab = .editor
+    @State private var showingClearConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -30,6 +31,7 @@ struct AppRoot: View {
                     regularLayout
                 }
             }
+            .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("Swift Interpreter")
             .onAppear {
                 if viewModel.autoRunEnabled {
@@ -38,6 +40,12 @@ struct AppRoot: View {
             }
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button {
+                        showingClearConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .accessibilityLabel("Clear Editor")
                     Button("Run") {
                         viewModel.run()
                     }
@@ -68,24 +76,30 @@ struct AppRoot: View {
                     }
                 }
             }
+            .confirmationDialog(
+                "Clear editor?",
+                isPresented: $showingClearConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Clear All", role: .destructive) {
+                    viewModel.clearSource()
+                }
+            }
         }
     }
 
     private var regularLayout: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
+        HStack(spacing: 16) {
+            VStack(spacing: 12) {
                 if !viewModel.diagnostics.isEmpty {
                     errorBanner
                 }
                 EditorView(viewModel: viewModel)
-                Divider()
                 DiagnosticsView(diagnostics: viewModel.diagnostics, onCopyLine: copyLine)
                     .frame(height: 180)
-                Divider()
                 ConsoleView(logs: viewModel.logs, onClear: viewModel.clearLogs)
                     .frame(height: 160)
             }
-            Divider()
             PreviewPane(
                 view: viewModel.currentView,
                 diagnostics: viewModel.diagnostics,
@@ -93,10 +107,11 @@ struct AppRoot: View {
                 runID: viewModel.runID
             )
         }
+        .padding(12)
     }
 
     private var compactLayout: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             if !viewModel.diagnostics.isEmpty {
                 errorBanner
             }
@@ -118,6 +133,7 @@ struct AppRoot: View {
                     .frame(maxHeight: 200)
             }
         }
+        .padding(12)
     }
 
     private var statusIndicator: some View {
@@ -139,8 +155,9 @@ struct AppRoot: View {
                 .lineLimit(2)
             Spacer()
         }
-        .padding(8)
+        .padding(10)
         .background(Color.red)
+        .cornerRadius(10)
     }
 
     private var statusColor: Color {

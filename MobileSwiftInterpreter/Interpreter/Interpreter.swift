@@ -99,6 +99,19 @@ struct Interpreter {
         return raw != 0
     }
 
+    mutating func nextDouble() -> Double {
+        let end = pc + Bytecode.doubleByteWidth
+        let slice = bytecode.bytes[pc..<end]
+        pc = end
+        var raw: UInt64 = 0
+        _ = withUnsafeMutableBytes(of: &raw) { buffer in
+            for (index, byte) in slice.enumerated() {
+                buffer[index] = byte
+            }
+        }
+        return Double(bitPattern: UInt64(littleEndian: raw))
+    }
+
     mutating func nextSymbol() -> Int {
         return nextInt()
     }
@@ -136,6 +149,9 @@ struct Interpreter {
         case .pushBool:
             let value = nextBool()
             push(.nativeValue(value))
+        case .pushDouble:
+            let value = nextDouble()
+            push(.nativeValue(value))
         case .pushString:
             let index = nextInt()
             guard stringPool.indices.contains(index) else {
@@ -144,33 +160,66 @@ struct Interpreter {
             let value = stringPool[index]
             push(.nativeValue(value))
         case .add:
-            guard let rhs = pop()?.intValue, let lhs = pop()?.intValue else {
+            guard let rhsValue = pop(), let lhsValue = pop() else {
                 throw InterpreterRuntimeError.stackUnderflow
             }
-            push(.nativeValue(lhs + rhs))
+            if let rhsInt = rhsValue.intValue, let lhsInt = lhsValue.intValue {
+                push(.nativeValue(lhsInt + rhsInt))
+            } else if let rhsDouble = rhsValue.doubleValue, let lhsDouble = lhsValue.doubleValue {
+                push(.nativeValue(lhsDouble + rhsDouble))
+            } else {
+                throw InterpreterRuntimeError.stackUnderflow
+            }
         case .subtract:
-            guard let rhs = pop()?.intValue, let lhs = pop()?.intValue else {
+            guard let rhsValue = pop(), let lhsValue = pop() else {
                 throw InterpreterRuntimeError.stackUnderflow
             }
-            push(.nativeValue(lhs - rhs))
+            if let rhsInt = rhsValue.intValue, let lhsInt = lhsValue.intValue {
+                push(.nativeValue(lhsInt - rhsInt))
+            } else if let rhsDouble = rhsValue.doubleValue, let lhsDouble = lhsValue.doubleValue {
+                push(.nativeValue(lhsDouble - rhsDouble))
+            } else {
+                throw InterpreterRuntimeError.stackUnderflow
+            }
         case .multiply:
-            guard let rhs = pop()?.intValue, let lhs = pop()?.intValue else {
+            guard let rhsValue = pop(), let lhsValue = pop() else {
                 throw InterpreterRuntimeError.stackUnderflow
             }
-            push(.nativeValue(lhs * rhs))
+            if let rhsInt = rhsValue.intValue, let lhsInt = lhsValue.intValue {
+                push(.nativeValue(lhsInt * rhsInt))
+            } else if let rhsDouble = rhsValue.doubleValue, let lhsDouble = lhsValue.doubleValue {
+                push(.nativeValue(lhsDouble * rhsDouble))
+            } else {
+                throw InterpreterRuntimeError.stackUnderflow
+            }
         case .divide:
-            guard let rhs = pop()?.intValue, let lhs = pop()?.intValue else {
+            guard let rhsValue = pop(), let lhsValue = pop() else {
                 throw InterpreterRuntimeError.stackUnderflow
             }
-            if rhs == 0 {
-                throw InterpreterRuntimeError.divideByZero
+            if let rhsInt = rhsValue.intValue, let lhsInt = lhsValue.intValue {
+                if rhsInt == 0 {
+                    throw InterpreterRuntimeError.divideByZero
+                }
+                push(.nativeValue(lhsInt / rhsInt))
+            } else if let rhsDouble = rhsValue.doubleValue, let lhsDouble = lhsValue.doubleValue {
+                if rhsDouble == 0 {
+                    throw InterpreterRuntimeError.divideByZero
+                }
+                push(.nativeValue(lhsDouble / rhsDouble))
+            } else {
+                throw InterpreterRuntimeError.stackUnderflow
             }
-            push(.nativeValue(lhs / rhs))
         case .lessThan:
-            guard let rhs = pop()?.intValue, let lhs = pop()?.intValue else {
+            guard let rhsValue = pop(), let lhsValue = pop() else {
                 throw InterpreterRuntimeError.stackUnderflow
             }
-            push(.nativeValue(lhs < rhs))
+            if let rhsInt = rhsValue.intValue, let lhsInt = lhsValue.intValue {
+                push(.nativeValue(lhsInt < rhsInt))
+            } else if let rhsDouble = rhsValue.doubleValue, let lhsDouble = lhsValue.doubleValue {
+                push(.nativeValue(lhsDouble < rhsDouble))
+            } else {
+                throw InterpreterRuntimeError.stackUnderflow
+            }
         case .equal:
             let rhs = pop()
             let lhs = pop()
@@ -180,6 +229,8 @@ struct Interpreter {
             let result: Bool
             if let lhsInt = lhs?.intValue, let rhsInt = rhs?.intValue {
                 result = lhsInt == rhsInt
+            } else if let lhsDouble = lhs?.doubleValue, let rhsDouble = rhs?.doubleValue {
+                result = lhsDouble == rhsDouble
             } else if let lhsBool = lhs?.boolValue, let rhsBool = rhs?.boolValue {
                 result = lhsBool == rhsBool
             } else if let lhsString = lhs?.stringValue, let rhsString = rhs?.stringValue {
@@ -340,6 +391,11 @@ extension Interpreter {
             throw InterpreterRuntimeError.bridgeNotAllowed(typeName)
         }
         #if canImport(SwiftUI)
+        if typeName == "ClosedRange" {
+            let lower = arguments.first?.doubleValue ?? 0
+            let upper = arguments.dropFirst().first?.doubleValue ?? lower
+            return .nativeValue(lower...upper)
+        }
         if typeName == "Text" {
             let content = arguments.first?.stringValue ?? ""
             let view = AnyView(Text(content))
@@ -375,10 +431,112 @@ extension Interpreter {
         if typeName == "Circle" {
             return .nativeValue(AnyView(Circle()))
         }
+        if typeName == "Button" {
+            let views = arguments.compactMap { $0.viewValue }
+            if let title = arguments.first?.stringValue {
+                return .nativeValue(AnyView(Button(title) {}))
+            }
+            if !views.isEmpty {
+                let label: AnyView
+                if views.count == 1 {
+                    label = views[0]
+                } else {
+                    label = AnyView(VStack {
+                        ForEach(Array(views.enumerated()), id: \.offset) { element in
+                            element.element
+                        }
+                    })
+                }
+                return .nativeValue(AnyView(Button(action: {}) { label }))
+            }
+            return .nativeValue(AnyView(Button("Button") {}))
+        }
+        if typeName == "Slider" {
+            let value = arguments.first?.doubleValue ?? 0
+            var minValue: Double = 0
+            var maxValue: Double = 1
+            if let range = arguments.dropFirst().first?.doubleRangeValue {
+                minValue = range.lowerBound
+                maxValue = range.upperBound
+            } else if arguments.count == 2 {
+                maxValue = arguments[1].doubleValue ?? 1
+            } else if arguments.count >= 3 {
+                minValue = arguments[1].doubleValue ?? 0
+                maxValue = arguments[2].doubleValue ?? 1
+            }
+            if maxValue <= minValue {
+                maxValue = minValue + 1
+            }
+            let clampedValue = Swift.min(Swift.max(value, minValue), maxValue)
+            let slider = InteractiveSlider(initialValue: clampedValue, range: minValue...maxValue)
+            return .nativeValue(AnyView(slider))
+        }
+        if typeName == "Toggle" {
+            let views = arguments.compactMap { $0.viewValue }
+            let labelView = stackedView(from: views)
+            let isOn = arguments.first(where: { $0.boolValue != nil })?.boolValue ?? false
+            if let labelView = labelView {
+                return .nativeValue(AnyView(InteractiveToggle(labelView: labelView, initialValue: isOn)))
+            }
+            let label = arguments.first?.stringValue ?? "Toggle"
+            return .nativeValue(AnyView(InteractiveToggle(label: label, initialValue: isOn)))
+        }
+        if typeName == "TextField" {
+            let placeholder = arguments.first?.stringValue ?? "Text"
+            let initialValue = arguments.dropFirst().first?.stringValue ?? ""
+            let field = InteractiveTextField(placeholder: placeholder, initialValue: initialValue)
+            return .nativeValue(AnyView(field))
+        }
+        if typeName == "Stepper" {
+            let views = arguments.compactMap { $0.viewValue }
+            let labelView = stackedView(from: views)
+            let value = arguments.first(where: { $0.intValue != nil })?.intValue ?? 0
+            var minValue = 0
+            var maxValue = 10
+            if let range = arguments.last?.doubleRangeValue {
+                minValue = Int(range.lowerBound)
+                maxValue = Int(range.upperBound)
+            } else if arguments.count == 3 {
+                maxValue = arguments[2].intValue ?? maxValue
+            } else if arguments.count >= 4 {
+                minValue = arguments[2].intValue ?? minValue
+                maxValue = arguments[3].intValue ?? maxValue
+            }
+            if maxValue <= minValue {
+                maxValue = minValue + 1
+            }
+            if let labelView = labelView {
+                let stepper = InteractiveStepper(
+                    labelView: labelView,
+                    initialValue: value,
+                    range: minValue...maxValue
+                )
+                return .nativeValue(AnyView(stepper))
+            }
+            let label = arguments.first?.stringValue ?? "Stepper"
+            let stepper = InteractiveStepper(label: label, initialValue: value, range: minValue...maxValue)
+            return .nativeValue(AnyView(stepper))
+        }
         #endif
         let instance = buildCustomInstance(typeName: typeName, arguments: arguments)
         return .customInstance(instance)
     }
+
+    #if canImport(SwiftUI)
+    private func stackedView(from views: [AnyView]) -> AnyView? {
+        guard !views.isEmpty else {
+            return nil
+        }
+        if views.count == 1 {
+            return views[0]
+        }
+        return AnyView(VStack {
+            ForEach(Array(views.enumerated()), id: \.offset) { element in
+                element.element
+            }
+        })
+    }
+    #endif
 
     func evaluateFunctionCall(
         symbol: Int,

@@ -8,6 +8,7 @@
 struct Bytecode {
     static let intByteWidth = 8
     static let boolByteWidth = 1
+    static let doubleByteWidth = 8
 
     var bytes: [UInt8]
 
@@ -32,6 +33,13 @@ struct Bytecode {
 
     mutating func appendBool(_ value: Bool) {
         bytes.append(value ? 1 : 0)
+    }
+
+    mutating func appendDouble(_ value: Double) {
+        var raw = value.bitPattern.littleEndian
+        withUnsafeBytes(of: &raw) { buffer in
+            bytes.append(contentsOf: buffer)
+        }
     }
 
     mutating func appendSymbol(_ id: Int) {

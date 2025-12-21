@@ -80,6 +80,12 @@ final class AppViewModel: ObservableObject {
         logs = []
     }
 
+    func clearSource() {
+        source = ""
+        UserDefaults.standard.set(source, forKey: lastSourceKey)
+        handleSourceChange()
+    }
+
     func run() {
         currentTask?.cancel()
         let snapshot = source

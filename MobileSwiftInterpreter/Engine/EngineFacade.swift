@@ -21,13 +21,19 @@ import SwiftParserDiagnostics
 
 struct BridgeWhitelist {
     let allowedTypeNames: Set<String> = [
-        "Text",
+        "Button",
+        "Circle",
+        "ClosedRange",
         "EmptyView",
-        "VStack",
         "HStack",
-        "Spacer",
         "Rectangle",
-        "Circle"
+        "Slider",
+        "Spacer",
+        "Stepper",
+        "Text",
+        "TextField",
+        "Toggle",
+        "VStack"
     ]
 
     let allowedMethodNames: [String: Set<String>] = [

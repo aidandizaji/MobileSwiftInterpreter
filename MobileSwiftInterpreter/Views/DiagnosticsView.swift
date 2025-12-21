@@ -13,13 +13,12 @@ struct DiagnosticsView: View {
     let onCopyLine: (Int) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Diagnostics")
-                .font(.headline)
+        GroupBox {
             if diagnostics.isEmpty {
                 Text("No issues detected.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
@@ -58,7 +57,9 @@ struct DiagnosticsView: View {
                     }
                 }
             }
+        } label: {
+            Label("Diagnostics", systemImage: "exclamationmark.triangle")
+                .font(.subheadline)
         }
-        .padding(8)
     }
 }

@@ -50,6 +50,36 @@ extension InterpreterValue {
         }
     }
 
+    var doubleValue: Double? {
+        switch self {
+        case .nativeValue(let value):
+            if let doubleValue = value as? Double {
+                return doubleValue
+            }
+            if let intValue = value as? Int {
+                return Double(intValue)
+            }
+            return nil
+        case .customInstance:
+            return nil
+        }
+    }
+
+    var doubleRangeValue: ClosedRange<Double>? {
+        switch self {
+        case .nativeValue(let value):
+            if let range = value as? ClosedRange<Double> {
+                return range
+            }
+            if let range = value as? ClosedRange<Int> {
+                return Double(range.lowerBound)...Double(range.upperBound)
+            }
+            return nil
+        case .customInstance:
+            return nil
+        }
+    }
+
     #if canImport(SwiftUI)
     var viewValue: AnyView? {
         switch self {

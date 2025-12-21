@@ -24,4 +24,5 @@ enum Operation: UInt8 {
     case getProperty
     case constructType
     case returnValue
+    case pushDouble
 }

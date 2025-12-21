@@ -73,6 +73,11 @@ struct Compiler {
         emitBool(value)
     }
 
+    mutating func emitPushDouble(_ value: Double) {
+        emit(.pushDouble)
+        bytecode.appendDouble(value)
+    }
+
     mutating func allocateLocal(_ name: String) -> Int {
         if let existing = localTable[name] {
             return existing

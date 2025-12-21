@@ -32,6 +32,11 @@ extension Compiler {
             emitPushInt(value)
             return
         }
+        if let floatLiteral = expr.as(FloatLiteralExprSyntax.self) {
+            let value = Double(floatLiteral.literal.text) ?? 0
+            emitPushDouble(value)
+            return
+        }
         if let ifExpr = expr.as(IfExprSyntax.self) {
             compile(ifExpr: ifExpr)
             return
@@ -227,6 +232,11 @@ extension Compiler {
             emit(.lessThan)
         case "==":
             emit(.equal)
+        case "...":
+            let symbol = emitSymbol("ClosedRange")
+            emit(.constructType)
+            emitInt(symbol)
+            emitInt(2)
         default:
             break
         }
@@ -234,15 +244,39 @@ extension Compiler {
 
     private mutating func compile(call: FunctionCallExprSyntax) {
         let arguments = call.arguments.map { $0.expression }
-        if let identifier = call.calledExpression.as(IdentifierExprSyntax.self),
-           let closure = call.trailingClosure {
+        if let identifier = call.calledExpression.as(IdentifierExprSyntax.self) {
             let name = identifier.identifier.text
-            if name == "VStack" || name == "HStack" {
+            if let closure = call.trailingClosure,
+               name == "VStack" || name == "HStack" {
                 let count = compile(closure: closure)
                 let symbol = emitSymbol(name)
                 emit(.constructType)
                 emitInt(symbol)
                 emitInt(count)
+                return
+            }
+            if let closure = call.trailingClosure,
+               name == "Button" || name == "Toggle" || name == "Stepper" {
+                let nonClosureArgs = arguments.filter { $0.as(ClosureExprSyntax.self) == nil }
+                for argument in nonClosureArgs {
+                    compileExpression(argument)
+                }
+                let labelCount = compile(closure: closure)
+                let symbol = emitSymbol(name)
+                emit(.constructType)
+                emitInt(symbol)
+                emitInt(nonClosureArgs.count + labelCount)
+                return
+            }
+            if name == "Button" {
+                let nonClosureArgs = arguments.filter { $0.as(ClosureExprSyntax.self) == nil }
+                for argument in nonClosureArgs {
+                    compileExpression(argument)
+                }
+                let symbol = emitSymbol(name)
+                emit(.constructType)
+                emitInt(symbol)
+                emitInt(nonClosureArgs.count)
                 return
             }
         }
@@ -290,7 +324,13 @@ extension Compiler {
     private mutating func compile(closure: ClosureExprSyntax) -> Int {
         var count = 0
         for item in closure.statements {
-            compileStatement(item)
+            guard let expr = item.item.as(ExprSyntax.self) else {
+                continue
+            }
+            if expr.as(IfExprSyntax.self) != nil {
+                continue
+            }
+            compileExpression(expr)
             count += 1
         }
         return count
